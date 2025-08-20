@@ -1,475 +1,140 @@
---========================================================--
--- Roblox-GPT-UI 完整修正版（拖动/缩放/全屏/深色模式/RGB文字/透明度/美化）
---========================================================--
-
 local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local UIS = game:GetService("UserInputService")
-local player = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
 
-local MENU_WIDTH = 140
-local MAIN_W, MAIN_H = 500, 350
-local ACCENT = Color3.fromRGB(0,255,0)
-local BG0 = Color3.fromRGB(0,0,0)
-local BG1 = Color3.fromRGB(10,10,10)
-local BG2 = Color3.fromRGB(20,20,20)
-local BG3 = Color3.fromRGB(30,30,30)
-local FG = ACCENT
-local FONT = Enum.Font.Code
-local UI_TRANSPARENCY = 0.4 -- 默认透明度
+local gui = Instance.new("ScreenGui")
+gui.Name = "AutoInteractUI"
+gui.ResetOnSpawn = false
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local TextObjects = {}
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 240, 0, 150)
+frame.Position = UDim2.new(0.34, 0, 0.3, 0)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.Active = true
+frame.Draggable = true
+frame.Parent = gui
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
 
-local function corner(inst,r) local ui=Instance.new("UICorner",inst);ui.CornerRadius=UDim.new(0,r or 6);return ui end
-local function padd(inst,l,t,r,b) local ui=Instance.new("UIPadding",inst);ui.PaddingLeft=UDim.new(0,l or 0);ui.PaddingTop=UDim.new(0,t or 0);ui.PaddingRight=UDim.new(0,r or 0);ui.PaddingBottom=UDim.new(0,b or 0);return ui end
-local function vList(inst,pad) local ui=Instance.new("UIListLayout",inst);ui.SortOrder=Enum.SortOrder.LayoutOrder;ui.Padding=UDim.new(0,pad or 5);return ui end
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 28)
+title.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+title.Text = "游戏悦制裁脚本snmwdd开发"
+title.TextColor3 = Color3.new(1,1,1)
+title.TextScaled = true
+title.Font = Enum.Font.SourceSansBold
+title.Parent = frame
+Instance.new("UICorner", title).CornerRadius = UDim.new(0, 10)
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "ProHackerGUI"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0.84, 0, 0, 40)
+toggleBtn.Position = UDim2.new(0.08, 0, 0.30, 0)
+toggleBtn.Text = "关闭"
+toggleBtn.TextColor3 = Color3.new(1,1,1)
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.TextScaled = true
+toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+toggleBtn.Parent = frame
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
 
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0,MAIN_W,0,MAIN_H)
-mainFrame.Position = UDim2.new(0.2,0,0.2,0)
-mainFrame.BackgroundColor3 = BG0
-mainFrame.BackgroundTransparency = UI_TRANSPARENCY
-mainFrame.BorderSizePixel = 0
-mainFrame.ClipsDescendants = true
-mainFrame.Parent = screenGui
-corner(mainFrame,12)
+local rangeBox = Instance.new("TextBox")
+rangeBox.Size = UDim2.new(0.84, 0, 0, 38)
+rangeBox.Position = UDim2.new(0.08, 0, 0.70, 0)
+rangeBox.Text = "15"
+rangeBox.PlaceholderText = "范围"
+rangeBox.ClearTextOnFocus = false
+rangeBox.TextScaled = true
+rangeBox.TextColor3 = Color3.new(1,1,1)
+rangeBox.Font = Enum.Font.SourceSansBold
+rangeBox.BackgroundColor3 = Color3.fromRGB(50,50,50)
+rangeBox.Parent = frame
+Instance.new("UICorner", rangeBox).CornerRadius = UDim.new(0, 8)
 
---=================== 标题栏 ===================--
-local titleBar = Instance.new("Frame", mainFrame)
-titleBar.Size = UDim2.new(1,0,0,30)
-titleBar.BackgroundColor3 = BG2
-titleBar.BackgroundTransparency = UI_TRANSPARENCY
-corner(titleBar,12)
+local auto = false
+local interactDistance = tonumber(rangeBox.Text) or 15
+local lastFireAt = {}
+local throttle = 0.15
+local timeAcc = 0
 
-local titleLabel = Instance.new("TextLabel", titleBar)
-titleLabel.Text = "黑客风 GUI"
-titleLabel.Size = UDim2.new(1,-200,1,0)
-titleLabel.Position = UDim2.new(0,10,0,0)
-titleLabel.BackgroundTransparency = 1
-titleLabel.TextColor3 = FG
-titleLabel.Font = FONT
-titleLabel.TextSize = 20
-titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-table.insert(TextObjects, titleLabel)
+rangeBox:GetPropertyChangedSignal("Text"):Connect(function()
+    local filtered = rangeBox.Text:gsub("%D", "")
+    if filtered == "" then filtered = "0" end
+    if filtered ~= rangeBox.Text then
+        local startPos = rangeBox.CursorPosition
+        rangeBox.Text = filtered
+        rangeBox.CursorPosition = math.min((startPos or #filtered), #filtered+1)
+    end
+end)
 
--- 标题栏按钮函数
-local function createTitleButton(txt, offset)
-    local btn=Instance.new("TextButton",titleBar)
-    btn.Size=UDim2.new(0,30,0,30)
-    btn.Position=UDim2.new(1,-offset,0,0)
-    btn.BackgroundColor3 = BG2
-    btn.BackgroundTransparency = 0.5
-    btn.BorderColor3 = ACCENT
-    btn.BorderSizePixel = 2
-    btn.TextColor3 = FG
-    btn.Text=txt
-    btn.Font=FONT
-    btn.TextSize=20
-    corner(btn,6)
-    table.insert(TextObjects, btn)
-    return btn
+local function applyRangeFromBox()
+    local v = tonumber(rangeBox.Text)
+    if v and v > 0 then
+        interactDistance = v
+    else
+        rangeBox.Text = tostring(interactDistance)
+    end
 end
 
-local closeBtn = createTitleButton("X",35)
-local foldBtn = createTitleButton("-",70)
-local menuBtn = createTitleButton("≡",105)
-
--- 全屏按钮中空绿色方块
-local fullBtn = Instance.new("TextButton", titleBar)
-fullBtn.Size = UDim2.new(0,30,0,30)
-fullBtn.Position = UDim2.new(1,-140,0,0)
-fullBtn.BackgroundTransparency = 1
-fullBtn.BorderColor3 = ACCENT
-fullBtn.BorderSizePixel = 2
-fullBtn.Text = ""
-corner(fullBtn,6)
-
---=================== 菜单与功能框 ===================--
-local menuFrame = Instance.new("Frame", mainFrame)
-menuFrame.Size = UDim2.new(0,MENU_WIDTH,1,-30)
-menuFrame.Position = UDim2.new(0,0,0,30)
-menuFrame.BackgroundColor3 = BG1
-menuFrame.BackgroundTransparency = UI_TRANSPARENCY
-corner(menuFrame,10)
-vList(menuFrame,5)
-
-local funcFrame = Instance.new("Frame", mainFrame)
-funcFrame.Size = UDim2.new(1,-MENU_WIDTH,1,-30)
-funcFrame.Position = UDim2.new(0,MENU_WIDTH,0,30)
-funcFrame.BackgroundTransparency = 1
-
---=================== 拖动 ===================--
-local dragging=false
-local dragStartPos, dragStartMouse
-titleBar.InputBegan:Connect(function(input)
-    if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
-        dragging=true
-        dragStartPos=mainFrame.Position
-        dragStartMouse=input.Position
-        input.Changed:Connect(function()
-            if input.UserInputState==Enum.UserInputState.End then dragging=false end
-        end)
-    end
-end)
-titleBar.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then
-        local delta=input.Position-dragStartMouse
-        mainFrame.Position=UDim2.new(0,dragStartPos.X.Offset+delta.X,0,dragStartPos.Y.Offset+delta.Y)
-    end
+rangeBox.FocusLost:Connect(function()
+    applyRangeFromBox()
 end)
 
---=================== 自由缩放 ===================--
-local resizeHandle = Instance.new("Frame", mainFrame)
-resizeHandle.Size = UDim2.new(0,20,0,20)
-resizeHandle.Position = UDim2.new(1,-20,1,-20)
-resizeHandle.BackgroundColor3 = ACCENT
-resizeHandle.BorderSizePixel = 0
-corner(resizeHandle,4)
-
-local resizing=false
-local resizeStartPos, resizeStartSize
-resizeHandle.InputBegan:Connect(function(input)
-    if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
-        resizing=true
-        resizeStartPos=input.Position
-        resizeStartSize=mainFrame.Size
-        input.Changed:Connect(function()
-            if input.UserInputState==Enum.UserInputState.End then resizing=false end
-        end)
-    end
-end)
-resizeHandle.InputChanged:Connect(function(input)
-    if resizing then
-        local deltaX = input.Position.X - resizeStartPos.X
-        local deltaY = input.Position.Y - resizeStartPos.Y
-        local newW = math.clamp(resizeStartSize.X.Offset+deltaX, 200, 1000)
-        local newH = math.clamp(resizeStartSize.Y.Offset+deltaY, 150, 800)
-        mainFrame.Size = UDim2.new(0,newW,0,newH)
-    end
-end)
-
---=================== 菜单折叠 ===================--
-local menuVisible = true
-menuBtn.MouseButton1Click:Connect(function()
-    local targetX = menuVisible and -MENU_WIDTH or 0
-    TweenService:Create(menuFrame,TweenInfo.new(0.28,Enum.EasingStyle.Quad),{Position=UDim2.new(0,targetX,0,30)}):Play()
-    TweenService:Create(funcFrame,TweenInfo.new(0.28,Enum.EasingStyle.Quad),{Position=UDim2.new(0,MENU_WIDTH+targetX,0,30),Size=UDim2.new(1,-(MENU_WIDTH+targetX),1,-30)}):Play()
-    menuVisible = not menuVisible
-end)
-
-local folded=false
-foldBtn.MouseButton1Click:Connect(function()
-    local goalSize = folded and UDim2.new(0,MAIN_W,0,MAIN_H) or UDim2.new(0,MAIN_W,0,30)
-    TweenService:Create(mainFrame,TweenInfo.new(0.3,Enum.EasingStyle.Quad),{Size=goalSize}):Play()
-    folded = not folded
-end)
-
-closeBtn.MouseButton1Click:Connect(function()
-    screenGui:Destroy()
-end)
-
---=================== 全屏 ===================--
-local fullScreen=false
-local oldPos, oldSize
-fullBtn.MouseButton1Click:Connect(function()
-    if not fullScreen then
-        oldPos = mainFrame.Position
-        oldSize = mainFrame.Size
-        mainFrame.Position = UDim2.new(0,0,0,0)
-        mainFrame.Size = UDim2.new(1,0,1,0)
+toggleBtn.MouseButton1Click:Connect(function()
+    auto = not auto
+    if auto then
+        toggleBtn.Text = "开启"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
     else
-        mainFrame.Position = oldPos
-        mainFrame.Size = oldSize
+        toggleBtn.Text = "关闭"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
     end
-    fullScreen = not fullScreen
 end)
 
---=================== Turtle-Lib API ===================--
-local Library={}
-Library._pages={}
-Library._currentPage=nil
-local function updateTextColor()
-    for _,obj in pairs(TextObjects) do
-        if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
-            obj.TextColor3 = FG
+local function getPromptWorldPos(prompt)
+    local parent = prompt.Parent
+    if not parent then return nil end
+    if parent:IsA("BasePart") then
+        return parent.Position
+    elseif parent:IsA("Attachment") then
+        return parent.WorldPosition
+    elseif parent:IsA("Model") then
+        local pp = parent.PrimaryPart
+        if pp then return pp.Position end
+        local cf = parent:GetPivot()
+        return cf.Position
+    else
+        local part = parent:FindFirstChildWhichIsA("BasePart", true)
+        if part then return part.Position end
+    end
+    return nil
+end
+
+RunService.Heartbeat:Connect(function(dt)
+    timeAcc += dt
+    if not auto or timeAcc < throttle then return end
+    timeAcc = 0
+
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Enabled and obj.Parent then
+            if obj.MaxActivationDistance < interactDistance then
+                pcall(function() obj.MaxActivationDistance = interactDistance end)
+            end
+
+            local pos = getPromptWorldPos(obj)
+            if pos then
+                local dist = (pos - root.Position).Magnitude
+                if dist <= interactDistance then
+                    local now = os.clock()
+                    if (lastFireAt[obj] or 0) + 0.6 < now then
+                        lastFireAt[obj] = now
+                        pcall(fireproximityprompt, obj)
+                    end
+                end
+            end
         end
     end
-end
-local function updateTransparency()
-    mainFrame.BackgroundTransparency = UI_TRANSPARENCY
-    menuFrame.BackgroundTransparency = UI_TRANSPARENCY
-    titleBar.BackgroundTransparency = UI_TRANSPARENCY
-end
-
-function Library:Page(pageName)
-    local pageFrame = Instance.new("ScrollingFrame")
-    pageFrame.Name=pageName
-    pageFrame.Size=UDim2.new(1,0,1,0)
-    pageFrame.BackgroundTransparency=1
-    pageFrame.Visible=false
-    pageFrame.Parent=funcFrame
-    padd(pageFrame,10,10,10,10)
-    local list=vList(pageFrame,8)
-    list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        pageFrame.CanvasSize=UDim2.new(0,0,0,list.AbsoluteContentSize.Y+20)
-    end)
-
-    local btn = Instance.new("TextButton")
-    btn.Text=pageName
-    btn.Size=UDim2.new(1,0,0,30)
-    btn.BackgroundColor3=BG2
-    btn.TextColor3=FG
-    btn.Font=FONT
-    btn.TextSize=16
-    btn.Parent=menuFrame
-    corner(btn,4)
-    btn.BackgroundTransparency = 0.5
-    btn.BorderColor3 = ACCENT
-    btn.BorderSizePixel = 2
-    table.insert(TextObjects, btn)
-    btn.MouseButton1Click:Connect(function()
-        for _,p in pairs(Library._pages) do p.Visible=false end
-        pageFrame.Visible=true
-        Library._currentPage=pageFrame
-    end)
-
-    Library._pages[pageName]=pageFrame
-    local pageObj = {_frame=pageFrame}
-
-    function pageObj:AddLabel(text)
-        local r=Instance.new("TextLabel",pageFrame)
-        r.Text=text or ""
-        r.Size=UDim2.new(1,0,0,30)
-        r.BackgroundTransparency=1
-        r.TextColor3=FG
-        r.Font=FONT
-        r.TextSize=18
-        r.TextXAlignment=Enum.TextXAlignment.Left
-        table.insert(TextObjects,r)
-        return r
-    end
-
-    function pageObj:AddButton(text,callback)
-        local b=Instance.new("TextButton",pageFrame)
-        b.Text=text or "按钮"
-        b.Size=UDim2.new(1,0,0,30)
-        b.BackgroundColor3=BG3
-        b.BackgroundTransparency = 0.5
-        b.BorderColor3 = ACCENT
-        b.BorderSizePixel = 2
-        b.TextColor3=FG
-        b.Font=FONT
-        b.TextSize=18
-        corner(b,6)
-        table.insert(TextObjects,b)
-        b.MouseButton1Click:Connect(function()
-            if typeof(callback)=="function" then task.spawn(callback) end
-        end)
-        return b
-    end
-
-    function pageObj:AddTextbox(text,placeholder,callback)
-        local container=Instance.new("Frame",pageFrame)
-        container.Size=UDim2.new(1,0,0,35)
-        container.BackgroundTransparency=1
-        local label=Instance.new("TextLabel",container)
-        label.Text=text
-        label.Size=UDim2.new(1,0,0,15)
-        label.BackgroundTransparency=1
-        label.TextColor3=FG
-        label.Font=FONT
-        label.TextSize=16
-        label.TextXAlignment=Enum.TextXAlignment.Left
-        table.insert(TextObjects,label)
-
-        local box=Instance.new("TextBox",container)
-        box.PlaceholderText=placeholder or ""
-        box.Size=UDim2.new(1,0,0,20)
-        box.Position=UDim2.new(0,0,0,15)
-        box.BackgroundColor3=BG2
-        box.BackgroundTransparency=0.5
-        box.BorderColor3 = ACCENT
-        box.BorderSizePixel = 2
-        box.TextColor3=FG
-        box.Font=FONT
-        box.TextSize=16
-        corner(box,5)
-        table.insert(TextObjects,box)
-        box.FocusLost:Connect(function()
-            if typeof(callback)=="function" then task.spawn(callback,box.Text) end
-        end)
-        return box
-    end
-
-    function pageObj:AddToggle(text,default,callback)
-        local container=Instance.new("Frame",pageFrame)
-        container.Size=UDim2.new(1,0,0,30)
-        container.BackgroundTransparency=1
-        local label=Instance.new("TextLabel",container)
-        label.Text=text
-        label.Size=UDim2.new(0.7,0,1,0)
-        label.BackgroundTransparency=1
-        label.TextColor3=FG
-        label.Font=FONT
-        label.TextSize=16
-        label.TextXAlignment=Enum.TextXAlignment.Left
-        table.insert(TextObjects,label)
-
-        local toggleBtn=Instance.new("TextButton",container)
-        toggleBtn.Size=UDim2.new(0.3,0,1,0)
-        toggleBtn.Position=UDim2.new(0.7,0,0,0)
-        toggleBtn.Text=default and "ON" or "OFF"
-        toggleBtn.BackgroundColor3=BG3
-        toggleBtn.BorderColor3=ACCENT
-        toggleBtn.BorderSizePixel=2
-        toggleBtn.BackgroundTransparency=0.5
-        toggleBtn.TextColor3=FG
-        corner(toggleBtn,5)
-        table.insert(TextObjects,toggleBtn)
-        toggleBtn.MouseButton1Click:Connect(function()
-            default = not default
-            toggleBtn.Text = default and "ON" or "OFF"
-            if typeof(callback)=="function" then task.spawn(callback,default) end
-        end)
-        return toggleBtn
-    end
-
-    function pageObj:AddSlider(text,min,max,default,callback)
-        local container=Instance.new("Frame",pageFrame)
-        container.Size=UDim2.new(1,0,0,40)
-        container.BackgroundTransparency=1
-
-        local label=Instance.new("TextLabel",container)
-        label.Text=text.." : "..tostring(default)
-        label.Size=UDim2.new(1,0,0,15)
-        label.BackgroundTransparency=1
-        label.TextColor3=FG
-        label.Font=FONT
-        label.TextSize=16
-        label.TextXAlignment=Enum.TextXAlignment.Left
-        table.insert(TextObjects,label)
-
-        local sliderBg=Instance.new("Frame",container)
-        sliderBg.Size=UDim2.new(1,0,0,10)
-        sliderBg.Position=UDim2.new(0,0,0,20)
-        sliderBg.BackgroundColor3=BG2
-        sliderBg.BackgroundTransparency=0.5
-        sliderBg.BorderColor3=ACCENT
-        sliderBg.BorderSizePixel=2
-        corner(sliderBg,5)
-
-        local sliderFill=Instance.new("Frame",sliderBg)
-        sliderFill.Size=UDim2.new((default-min)/(max-min),0,1,0)
-        sliderFill.BackgroundColor3=ACCENT
-        corner(sliderFill,5)
-
-        local dragging=false
-        local function updateSlider(inputPos)
-            local rel = math.clamp((inputPos.X - sliderBg.AbsolutePosition.X)/sliderBg.AbsoluteSize.X,0,1)
-            sliderFill.Size = UDim2.new(rel,0,1,0)
-            local val = math.floor(min + (max-min)*rel)
-            label.Text = text.." : "..val
-            if typeof(callback)=="function" then task.spawn(callback,val) end
-        end
-
-        sliderBg.InputBegan:Connect(function(input)
-            if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
-                dragging=true
-                updateSlider(input.Position)
-                input.Changed:Connect(function()
-                    if input.UserInputState==Enum.UserInputState.End then dragging=false end
-                end)
-            end
-        end)
-
-        sliderBg.InputChanged:Connect(function(input)
-            if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then
-                updateSlider(input.Position)
-            end
-        end)
-
-        return sliderFill
-    end
-
-    return pageObj
-end
-
---=================== 创建页面 ===================--
-local InfoPage = Library:Page("信息")
-local PlayerPage = Library:Page("玩家")
-local SettingPage = Library:Page("设置")
-local OtherPage = Library:Page("其他")
-local AuthorPage = Library:Page("作者")
-
--- 页面切换按钮
-InfoPage:AddButton("玩家", function()
-    Library._currentPage.Visible=false
-    PlayerPage._frame.Visible=true
-    Library._currentPage=PlayerPage._frame
 end)
-InfoPage:AddButton("设置", function()
-    Library._currentPage.Visible=false
-    SettingPage._frame.Visible=true
-    Library._currentPage=SettingPage._frame
-end)
-InfoPage:AddButton("其他", function()
-    Library._currentPage.Visible=false
-    OtherPage._frame.Visible=true
-    Library._currentPage=OtherPage._frame
-end)
-InfoPage:AddButton("作者", function()
-    Library._currentPage.Visible=false
-    AuthorPage._frame.Visible=true
-    Library._currentPage=AuthorPage._frame
-end)
-
---=================== 设置页面控件 ===================--
-SettingPage:AddLabel("文本颜色选择 (RGB滑条):")
-SettingPage:AddSlider("红色",0,255,FG.R*255,function(val) FG = Color3.fromRGB(val,FG.G*255,FG.B*255); updateTextColor() end)
-SettingPage:AddSlider("绿色",0,255,FG.G*255,function(val) FG = Color3.fromRGB(FG.R*255,val,FG.B*255); updateTextColor() end)
-SettingPage:AddSlider("蓝色",0,255,FG.B*255,function(val) FG = Color3.fromRGB(FG.R*255,FG.G*255,val); updateTextColor() end)
-
-SettingPage:AddLabel("UI透明度 (0~1):")
-SettingPage:AddTextbox("透明度",""..UI_TRANSPARENCY,function(val)
-    local num = tonumber(val)
-    if num then
-        UI_TRANSPARENCY = math.clamp(num,0,1)
-        updateTransparency()
-    end
-end)
-
-SettingPage:AddToggle("深色模式", true, function(state)
-    if state then
-        mainFrame.BackgroundColor3=BG0
-        menuFrame.BackgroundColor3=BG1
-        titleBar.BackgroundColor3=BG2
-        for _,btn in pairs(menuFrame:GetChildren()) do if btn:IsA("TextButton") then btn.BackgroundColor3=BG2 end end
-        for _,btn in pairs(funcFrame:GetChildren()) do if btn:IsA("TextButton") then btn.BackgroundColor3=BG3 end end
-        closeBtn.BackgroundColor3=BG2
-        foldBtn.BackgroundColor3=BG2
-        menuBtn.BackgroundColor3=BG2
-        fullBtn.BorderColor3=ACCENT
-    else
-        mainFrame.BackgroundColor3=Color3.fromRGB(240,240,240)
-        menuFrame.BackgroundColor3=Color3.fromRGB(220,220,220)
-        titleBar.BackgroundColor3=Color3.fromRGB(200,200,200)
-        for _,btn in pairs(menuFrame:GetChildren()) do if btn:IsA("TextButton") then btn.BackgroundColor3=Color3.fromRGB(180,180,180) end end
-        for _,btn in pairs(funcFrame:GetChildren()) do if btn:IsA("TextButton") then btn.BackgroundColor3=Color3.fromRGB(200,200,200) end end
-        closeBtn.BackgroundColor3=Color3.fromRGB(200,200,200)
-        foldBtn.BackgroundColor3=Color3.fromRGB(200,200,200)
-        menuBtn.BackgroundColor3=Color3.fromRGB(200,200,200)
-        fullBtn.BorderColor3=Color3.fromRGB(0,255,0)
-    end
-end)
-
--- 默认显示信息页面
-for _,p in pairs(Library._pages) do p.Visible=false end
-InfoPage._frame.Visible=true
-Library._currentPage=InfoPage._frame
-
-return Library
